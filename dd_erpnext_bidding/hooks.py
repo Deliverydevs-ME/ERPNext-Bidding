@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext", "falcon"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -43,7 +43,9 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"Request for Quotation": "public/js/request_for_quotation.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -70,6 +72,7 @@ app_license = "mit"
 # automatically create page for each record of this doctype
 # website_generators = ["Web Page"]
 
+
 # Jinja
 # ----------
 
@@ -82,8 +85,8 @@ app_license = "mit"
 # Installation
 # ------------
 
-# before_install = "dd_erpnext_bidding.install.before_install"
-# after_install = "dd_erpnext_bidding.install.after_install"
+after_install = "dd_erpnext_bidding.install.after_install"
+after_migrate = "dd_erpnext_bidding.install.create_fields"
 
 # Uninstallation
 # ------------
@@ -117,13 +120,13 @@ app_license = "mit"
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+# Blocks read/download of any attachment on a sealed Supplier Quotation for
+# everyone (except Administrator, who bypasses all permission hooks by
+# design) until that RFQ's bidding window opens - keeps PDF/Excel
+# attachments just as confidential as the rates until then.
+has_permission = {
+	"File": "dd_erpnext_bidding.bidding.supplier_quotation.has_file_permission",
+}
 
 # DocType Class
 # ---------------
@@ -137,34 +140,27 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Request for Quotation": {
+		"validate": "dd_erpnext_bidding.bidding.request_for_quotation.validate",
+		"on_submit": "dd_erpnext_bidding.bidding.request_for_quotation.on_submit",
+	},
+	"Supplier Quotation": {
+		"validate": "dd_erpnext_bidding.bidding.supplier_quotation.validate",
+		"on_submit": "dd_erpnext_bidding.bidding.supplier_quotation.on_submit",
+	},
+}
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"dd_erpnext_bidding.tasks.all"
-# 	],
-# 	"daily": [
-# 		"dd_erpnext_bidding.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"dd_erpnext_bidding.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"dd_erpnext_bidding.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"dd_erpnext_bidding.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"cron": {
+		"*/5 * * * *": [
+			"dd_erpnext_bidding.bidding.request_for_quotation.auto_open_bids",
+		],
+	},
+}
 
 # Testing
 # -------

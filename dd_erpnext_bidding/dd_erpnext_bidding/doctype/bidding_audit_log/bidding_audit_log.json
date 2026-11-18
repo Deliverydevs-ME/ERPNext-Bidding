@@ -1,0 +1,134 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-17 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "event_type",
+  "reference_doctype",
+  "reference_name",
+  "round_number",
+  "column_break_main",
+  "supplier",
+  "user",
+  "ip_address",
+  "section_break_details",
+  "details"
+ ],
+ "fields": [
+  {
+   "fieldname": "event_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Event",
+   "options": "Quotation Submitted\nLate Submission Blocked\nAmendment Blocked\nBids Opened\nComparative Statement Generated",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Reference Doctype",
+   "options": "DocType",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Reference Name",
+   "options": "reference_doctype",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "round_number",
+   "fieldtype": "Int",
+   "label": "Round",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Supplier",
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "User",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ip_address",
+   "fieldtype": "Data",
+   "label": "IP Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "details",
+   "fieldtype": "Small Text",
+   "label": "Details",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "DD ERPNext Bidding",
+ "name": "Bidding Audit Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Purchase Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Purchase User",
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
