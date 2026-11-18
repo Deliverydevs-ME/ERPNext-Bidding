@@ -48,12 +48,14 @@ CUSTOM_FIELDS = {
 			"fieldname": "bidding_round_number",
 			"fieldtype": "Int",
 			"label": "Bidding Round",
+			"default": "1",
 			"read_only": 1,
 			"insert_after": "enable_vendor_bidding",
 			"depends_on": BIDDING_ENABLED,
 			"no_copy": 1,
-			"description": "Which round this RFQ is, among all bidding-enabled RFQs raised against the "
-			"same Material Request. Set automatically on submit.",
+			"description": "Which round this RFQ will become, among all bidding-enabled RFQs raised "
+			"against the same Material Request. Previewed live while still a draft; set for real "
+			"on submit.",
 		},
 		{
 			"fieldname": "cb_vendor_bidding_1",
@@ -167,7 +169,7 @@ CUSTOM_FIELDS = {
 			"depends_on": "eval:doc.is_sealed_bid",
 			"options": (
 				"<div class='alert alert-warning'>"
-				"\U0001f512 This bid is sealed. Rates, lead time and attachments are hidden from "
+				"\U0001f512 This bid is sealed. Rates, delivery dates and attachments are hidden from "
 				"everyone - including Purchase Manager and System Manager - until this RFQ's bidding "
 				"window opens."
 				"</div>"
@@ -254,6 +256,18 @@ def create_fields():
 		make_property_setter(
 			ps["doctype"], ps["fieldname"], ps["property"], ps["value"], ps["property_type"], for_doctype=False
 		)
+	flag_bidding_request_types()
+
+
+def flag_bidding_request_types():
+	"""Best-effort, idempotent: if a "Tender (Bidding)" Material Request Type
+	already exists (as created manually on this site), flag it so RFQs
+	created from a Material Request of that type default to Enable Vendor
+	Bidding = checked. Harmless no-op if it doesn't exist yet or is already
+	flagged.
+	"""
+	if frappe.db.exists("Material Request Type", "Tender (Bidding)"):
+		frappe.db.set_value("Material Request Type", "Tender (Bidding)", "is_bidding_type", 1)
 
 
 def remove_obsolete():

@@ -34,27 +34,71 @@ def validate(doc, method=None):
 			title=_("Vendor Bidding"),
 		)
 
+	if doc.docstatus == 1:
+		_create_draft_quotations(doc)
+
+
+def _create_draft_quotations(rfq):
+	"""Pre-create an empty Draft Supplier Quotation for each invited supplier
+	so the "Submit your Quotation" email link (which points suppliers at
+	their own Supplier Quotation list, not the bare RFQ page - see
+	overrides.py) always has something real to open straight away, with
+	qty/items already filled in and just the rate, lead time and
+	attachment left for the supplier to add.
+	"""
+	from erpnext.buying.doctype.request_for_quotation.request_for_quotation import create_rfq_items
+
+	for rfq_supplier in rfq.suppliers:
+		supplier = rfq_supplier.supplier
+		already_exists = frappe.db.sql(
+			"""
+			select sq.name from `tabSupplier Quotation` sq
+			inner join `tabSupplier Quotation Item` sqi on sqi.parent = sq.name
+			where sq.supplier = %s and sqi.request_for_quotation = %s limit 1
+			""",
+			(supplier, rfq.name),
+		)
+		if already_exists:
+			continue
+
+		sq_doc = frappe.new_doc("Supplier Quotation")
+		sq_doc.supplier = supplier
+		sq_doc.company = rfq.company
+		for d in rfq.items:
+			create_rfq_items(sq_doc, supplier, d)
+		sq_doc.flags.ignore_permissions = True
+		sq_doc.run_method("set_missing_values")
+		sq_doc.insert(ignore_permissions=True)
+
+
+def _next_round_number(material_request, exclude=None):
+	if not material_request:
+		return 1
+	filters = {
+		"tender_material_request": material_request,
+		"enable_vendor_bidding": 1,
+		"docstatus": 1,
+	}
+	if exclude:
+		filters["name"] = ["!=", exclude]
+	return cint(frappe.db.count("Request for Quotation", filters)) + 1
+
+
+@frappe.whitelist()
+def get_next_bidding_round(material_request):
+	"""Live preview for the form: what Bidding Round this RFQ will become if
+	submitted right now. Purely informational - on_submit always recomputes
+	this fresh, so it can't go stale even if another round gets submitted
+	in the meantime.
+	"""
+	return _next_round_number(material_request)
+
 
 def on_submit(doc, method=None):
 	if not doc.enable_vendor_bidding:
 		return
 
-	round_number = 1
-	if doc.tender_material_request:
-		round_number = (
-			cint(
-				frappe.db.count(
-					"Request for Quotation",
-					{
-						"tender_material_request": doc.tender_material_request,
-						"enable_vendor_bidding": 1,
-						"docstatus": 1,
-						"name": ["!=", doc.name],
-					},
-				)
-			)
-			+ 1
-		)
+	round_number = _next_round_number(doc.tender_material_request, exclude=doc.name)
 
 	doc.db_set(
 		{"bidding_round_number": round_number, "bidding_status": "Bidding Open"}, update_modified=False
@@ -138,3 +182,25 @@ def auto_open_bids():
 				_do_open(rfq, opened_by="Administrator", auto=True)
 			except Exception:
 				frappe.log_error(title="Auto bid opening failed", message=frappe.get_traceback())
+
+
+@frappe.whitelist()
+def make_request_for_quotation(source_name, target_doc=None):
+	"""Wraps erpnext's own Material Request -> RFQ mapper (hooks.py
+	`override_whitelisted_methods`) so that creating an RFQ from a Material
+	Request whose Request Type is flagged "Triggers Vendor Bidding" opens
+	with Enable Vendor Bidding already checked - which also auto-expands
+	the Vendor Bidding section, since a collapsible section with a filled
+	field renders expanded by default.
+	"""
+	from erpnext.stock.doctype.material_request.material_request import (
+		make_request_for_quotation as _make_request_for_quotation,
+	)
+
+	doclist = _make_request_for_quotation(source_name, target_doc)
+
+	request_type = frappe.db.get_value("Material Request", source_name, "material_request_type_link")
+	if request_type and frappe.db.get_value("Material Request Type", request_type, "is_bidding_type"):
+		doclist.enable_vendor_bidding = 1
+
+	return doclist

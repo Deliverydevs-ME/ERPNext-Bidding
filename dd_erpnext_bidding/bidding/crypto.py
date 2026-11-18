@@ -18,12 +18,22 @@ import frappe
 from frappe.utils.password import remove_encrypted_password, set_encrypted_password
 
 from dd_erpnext_bidding.bidding.constants import (
+	DATE_FIELDS,
 	SQ_ITEM_MONEY_FIELDS,
 	SQ_PARENT_MONEY_FIELDS,
 	SQ_TAXES_MONEY_FIELDS,
+	TEXT_FIELDS,
 )
 
 SEALED_PAYLOAD_FIELD = "sealed_bid_payload"
+
+
+def _empty_value(fieldname):
+	if fieldname in DATE_FIELDS:
+		return None
+	if fieldname.endswith("in_words") or fieldname in TEXT_FIELDS:
+		return ""
+	return 0
 
 
 def _coerce(fieldname, value):
@@ -34,7 +44,7 @@ def _coerce(fieldname, value):
 	"""
 	if value is not None:
 		return value
-	return "" if fieldname.endswith("in_words") else 0
+	return _empty_value(fieldname)
 
 
 def seal_supplier_quotation(doc):
@@ -57,13 +67,14 @@ def seal_supplier_quotation(doc):
 
 	set_encrypted_password(doc.doctype, doc.name, json.dumps(payload), SEALED_PAYLOAD_FIELD)
 
+	zeroed_items = {f: _empty_value(f) for f in SQ_ITEM_MONEY_FIELDS}
 	for d in doc.items:
-		frappe.db.set_value(d.doctype, d.name, dict.fromkeys(SQ_ITEM_MONEY_FIELDS, 0), update_modified=False)
+		frappe.db.set_value(d.doctype, d.name, zeroed_items, update_modified=False)
 
 	for d in doc.get("taxes") or []:
 		frappe.db.set_value(d.doctype, d.name, dict.fromkeys(SQ_TAXES_MONEY_FIELDS, 0), update_modified=False)
 
-	zeroed_parent = {f: ("" if f.endswith("in_words") else 0) for f in SQ_PARENT_MONEY_FIELDS}
+	zeroed_parent = {f: _empty_value(f) for f in SQ_PARENT_MONEY_FIELDS}
 	zeroed_parent[SEALED_PAYLOAD_FIELD] = "*" * 8
 	zeroed_parent["is_sealed_bid"] = 1
 	frappe.db.set_value(doc.doctype, doc.name, zeroed_parent, update_modified=False)

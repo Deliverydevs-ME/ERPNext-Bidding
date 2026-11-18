@@ -1,0 +1,206 @@
+{% extends "templates/web.html" %}
+
+{% block title %}Submit Your Quotation{% endblock %}
+
+{% block header %}
+<h1 style="margin-top: 10px;">Sealed Quotation Submission</h1>
+{% endblock %}
+
+{% block page_content %}
+<div id="sq-root" data-name="{{ sq_name }}">
+	<div class="vb-card">
+		<p><strong>Supplier:</strong> {{ supplier_name }}</p>
+		{% if rfq_name %}<p><strong>Request for Quotation:</strong> {{ rfq_name }}</p>{% endif %}
+		{% if closing_date %}<p><strong>Submission closes:</strong> {{ frappe.utils.format_datetime(closing_date) }}</p>{% endif %}
+		<p class="text-muted">
+			Your quotation is sealed: no one - including the buyer - can see the amounts, delivery dates or
+			attachment you enter here until the bidding window closes and every submitted quotation is
+			opened together.
+		</p>
+	</div>
+
+	{% if already_submitted %}
+	<div class="alert alert-info">
+		Your quotation has already been submitted and sealed. It will become visible once bids are opened.
+	</div>
+	{% elif not is_editable %}
+	<div class="alert alert-warning">
+		This quotation can no longer be edited.
+	</div>
+	{% else %}
+	<table class="table" id="sq-items-table">
+		<thead>
+			<tr>
+				<th>Item</th>
+				<th>Description</th>
+				<th>Qty</th>
+				<th>UOM</th>
+				<th style="width: 150px;">Your Rate</th>
+				<th style="width: 160px;">Expected Delivery Date</th>
+				<th style="width: 150px; text-align: right;">Amount</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for item in sq.items %}
+			<tr>
+				<td>{{ item.item_code }}</td>
+				<td>{{ item.description or item.item_name or "" }}</td>
+				<td>{{ item.qty }}</td>
+				<td>{{ item.uom or "" }}</td>
+				<td><input type="number" step="any" min="0" class="form-control sq-rate"
+					data-row="{{ item.name }}" data-qty="{{ item.qty }}" value="{{ item.rate or "" }}"></td>
+				<td><input type="date" class="form-control sq-delivery-date"
+					data-row="{{ item.name }}" value="{{ item.expected_delivery_date or "" }}"
+					min="{{ frappe.utils.today() }}"></td>
+				<td class="sq-amount" data-row="{{ item.name }}" style="text-align: right;">
+					{{ currency_symbol }} {{ "%.2f"|format(item.amount or ((item.qty or 0) * (item.rate or 0))) }}
+				</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+		<tfoot>
+			<tr>
+				<td colspan="6" style="text-align: right;"><strong>Grand Total</strong></td>
+				<td id="sq-grand-total" style="text-align: right;">
+					<strong>{{ currency_symbol }} {{ "%.2f"|format(sq.items|sum(attribute="amount") or 0) }}</strong>
+				</td>
+			</tr>
+		</tfoot>
+	</table>
+
+	<div class="vb-card">
+		<label for="sq-file"><strong>Supporting Attachment (PDF/Excel)</strong></label><br>
+		<input type="file" id="sq-file" accept=".pdf,.xls,.xlsx">
+		<div id="sq-file-status" class="text-muted" style="margin-top: 6px;"></div>
+	</div>
+
+	<div id="sq-actions">
+		<button class="btn btn-default" id="sq-save-btn">Save Draft</button>
+		<button class="btn btn-primary" id="sq-submit-btn">Submit Final Quotation</button>
+	</div>
+	<div id="sq-message" style="margin-top: 10px;"></div>
+	{% endif %}
+</div>
+
+<style>
+	#sq-root { max-width: 800px; margin: 0 auto; }
+	.vb-card { background: var(--bg-light-gray, #f5f5f5); border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
+	#sq-items-table input { width: 100%; text-align: right; }
+	#sq-actions { margin-top: 16px; display: flex; gap: 10px; }
+</style>
+
+<script>
+(function () {
+	const root = document.getElementById("sq-root");
+	if (!root) return;
+	const name = root.dataset.name;
+
+	function apiCall(method, args) {
+		return fetch(`/api/method/dd_erpnext_bidding.bidding.supplier_quotation.${method}`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"X-Frappe-CSRF-Token": frappe.csrf_token || "",
+			},
+			body: JSON.stringify(args || {}),
+		}).then(async (res) => {
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				const message = data.exception || data.message || "Something went wrong.";
+				throw new Error(typeof message === "string" ? message.replace(/^\w+Error:\s*/, "") : "Something went wrong.");
+			}
+			return data.message;
+		});
+	}
+
+	function collectItems() {
+		const rates = {};
+		document.querySelectorAll(".sq-rate").forEach((i) => (rates[i.dataset.row] = i.value));
+		const items = [];
+		document.querySelectorAll(".sq-delivery-date").forEach((i) => {
+			items.push({ name: i.dataset.row, rate: rates[i.dataset.row] || 0, expected_delivery_date: i.value || "" });
+		});
+		return items;
+	}
+
+	function setMessage(text, isError) {
+		const el = document.getElementById("sq-message");
+		if (!el) return;
+		el.textContent = text;
+		el.className = isError ? "text-danger" : "text-success";
+	}
+
+	function uploadFile() {
+		const fileInput = document.getElementById("sq-file");
+		if (!fileInput || !fileInput.files.length) {
+			return Promise.resolve();
+		}
+		const formData = new FormData();
+		formData.append("file", fileInput.files[0]);
+		formData.append("name", name);
+
+		document.getElementById("sq-file-status").textContent = "Uploading...";
+
+		return fetch("/api/method/dd_erpnext_bidding.bidding.supplier_quotation.upload_quotation_attachment", {
+			method: "POST",
+			headers: { "X-Frappe-CSRF-Token": frappe.csrf_token || "" },
+			body: formData,
+		}).then(async (res) => {
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				const message = data.exception || data.message || "File upload failed.";
+				throw new Error(typeof message === "string" ? message.replace(/^\w+Error:\s*/, "") : "File upload failed.");
+			}
+			document.getElementById("sq-file-status").textContent = "Attached: " + fileInput.files[0].name;
+		});
+	}
+
+	function submitQuotation(action) {
+		if (action === "submit" && !confirm(
+			"Once submitted your quotation is final and sealed - you will not be able to view or " +
+				"change it again until bids are opened. Continue?"
+		)) {
+			return;
+		}
+		setMessage("Saving...", false);
+		uploadFile()
+			.then(() => apiCall("save_quotation", { name, items: collectItems(), action }))
+			.then(() => {
+				if (action === "submit") {
+					window.location.reload();
+				} else {
+					setMessage("Draft saved.", false);
+				}
+			})
+			.catch((err) => setMessage(err.message, true));
+	}
+
+	const saveBtn = document.getElementById("sq-save-btn");
+	const submitBtn = document.getElementById("sq-submit-btn");
+	if (saveBtn) saveBtn.addEventListener("click", () => submitQuotation("save"));
+	if (submitBtn) submitBtn.addEventListener("click", () => submitQuotation("submit"));
+
+	const currencySymbol = "{{ currency_symbol }}";
+
+	function formatAmount(value) {
+		return currencySymbol + " " + value.toFixed(2);
+	}
+
+	function recalculate() {
+		let grandTotal = 0;
+		document.querySelectorAll(".sq-rate").forEach((input) => {
+			const qty = parseFloat(input.dataset.qty || "0");
+			const rate = parseFloat(input.value || "0");
+			const amount = qty * rate;
+			grandTotal += amount;
+			const cell = document.querySelector(`.sq-amount[data-row="${input.dataset.row}"]`);
+			if (cell) cell.textContent = formatAmount(amount);
+		});
+		const totalEl = document.getElementById("sq-grand-total");
+		if (totalEl) totalEl.innerHTML = `<strong>${formatAmount(grandTotal)}</strong>`;
+	}
+
+	document.querySelectorAll(".sq-rate").forEach((input) => input.addEventListener("input", recalculate));
+})();
+</script>
+{% endblock %}

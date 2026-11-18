@@ -3,6 +3,7 @@
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 from dd_erpnext_bidding.bidding import constants
 from dd_erpnext_bidding.bidding.audit import log_event
@@ -50,8 +51,9 @@ def validate(doc, method=None):
 
 def _validate_complete_bid(doc):
 	"""A sealed-bid submission must be complete: every item needs a rate and
-	a lead time, and at least one supporting attachment. Uploading a file
-	alone, with items left blank, does not count as a valid quotation.
+	an expected delivery date, and at least one supporting attachment.
+	Uploading a file alone, with items left blank, does not count as a
+	valid quotation.
 	"""
 	missing_rate = [d.idx for d in doc.items if not d.rate]
 	if missing_rate:
@@ -62,11 +64,11 @@ def _validate_complete_bid(doc):
 			title=_("Incomplete Quotation"),
 		)
 
-	missing_lead_time = [d.idx for d in doc.items if not d.lead_time_days]
-	if missing_lead_time:
+	missing_delivery_date = [d.idx for d in doc.items if not d.expected_delivery_date]
+	if missing_delivery_date:
 		frappe.throw(
-			_("Please enter the delivery lead time (in days) for every item. Missing for row(s): {0}").format(
-				", ".join(str(i) for i in missing_lead_time)
+			_("Please enter the expected delivery date for every item. Missing for row(s): {0}").format(
+				", ".join(str(i) for i in missing_delivery_date)
 			),
 			title=_("Incomplete Quotation"),
 		)
@@ -100,6 +102,89 @@ def on_submit(doc, method=None):
 		round_number=doc.bidding_round,
 		details=f"Supplier Quotation {doc.name} submitted and sealed (round {doc.bidding_round}).",
 	)
+
+
+@frappe.whitelist()
+def save_quotation(name, items, action="save"):
+	"""Backs the /submit-quotation/<name> portal page (www/submit_quotation.py).
+
+	The generic Supplier Quotation web view is read-only and has no field
+	for expected delivery date or an attachment, so logged-in suppliers
+	fill in their bid through this dedicated page instead - this is what
+	it calls to save rates/dates and, on final submit, hand off to the
+	exact same validate/seal pipeline every other path into Supplier
+	Quotation goes through. Login is required (not allow_guest); write
+	permission on the specific document is still checked explicitly below.
+	"""
+	doc = frappe.get_doc("Supplier Quotation", name)
+	if not frappe.has_website_permission(doc, "write"):
+		frappe.throw(_("You are not permitted to edit this quotation."), frappe.PermissionError)
+
+	if doc.docstatus != 0:
+		frappe.throw(_("This quotation is no longer editable."))
+
+	if isinstance(items, str):
+		items = frappe.parse_json(items)
+
+	by_name = {d.name: d for d in doc.items}
+	for incoming in items:
+		row = by_name.get(incoming.get("name"))
+		if not row:
+			continue  # never trust a row name that isn't actually on this document
+		row.rate = flt(incoming.get("rate"))
+		row.expected_delivery_date = incoming.get("expected_delivery_date") or None
+
+	# Authorization was already checked above via frappe.has_website_permission -
+	# the right mechanism for a portal/Website User, who has no desk role and so
+	# would otherwise fail the standard role-based permission check on save/submit.
+	doc.flags.ignore_permissions = True
+	doc.save()
+
+	if action == "submit":
+		doc.flags.ignore_permissions = True
+		doc.submit()
+
+	return {"name": doc.name, "docstatus": doc.docstatus}
+
+
+@frappe.whitelist()
+def upload_quotation_attachment(name):
+	"""Standalone upload endpoint for the /submit-quotation/<name> page.
+
+	Frappe's own `/api/method/upload_file` checks write permission via
+	`doc.check_permission()` - the standard, role-based desk check - which
+	a portal supplier (a Website User, or even a System User with no
+	desk role on this doctype) always fails. Supplier Quotation's actual
+	portal access is governed by `frappe.has_website_permission` instead
+	(Contact/Supplier linkage), so file upload needs its own endpoint that
+	checks the right thing, the same as save_quotation above.
+	"""
+	doc = frappe.get_doc("Supplier Quotation", name)
+	if not frappe.has_website_permission(doc, "write"):
+		frappe.throw(_("You are not permitted to attach files to this quotation."), frappe.PermissionError)
+
+	if doc.docstatus != 0:
+		frappe.throw(_("This quotation is no longer editable."))
+
+	if "file" not in frappe.request.files:
+		frappe.throw(_("No file was received."))
+
+	upload = frappe.request.files["file"]
+
+	file_doc = frappe.get_doc(
+		{
+			"doctype": "File",
+			"file_name": upload.filename,
+			"attached_to_doctype": "Supplier Quotation",
+			"attached_to_name": name,
+			"content": upload.stream.read(),
+			"is_private": 1,
+		}
+	)
+	file_doc.flags.ignore_permissions = True
+	file_doc.insert(ignore_permissions=True)
+
+	return {"file_name": file_doc.file_name, "file_url": file_doc.file_url}
 
 
 def has_file_permission(doc, ptype=None, user=None, debug=False):

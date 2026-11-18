@@ -72,6 +72,14 @@ doctype_js = {
 # automatically create page for each record of this doctype
 # website_generators = ["Web Page"]
 
+# Editable supplier-quotation entry form (rate, lead time, attachment) for
+# a logged-in supplier - the generic Supplier Quotation web view is
+# read-only and has no field for either, so this replaces it as the
+# destination suppliers are actually sent to.
+website_route_rules = [
+	{"from_route": "/submit-quotation/<path:sqname>", "to_route": "submit_quotation"},
+]
+
 
 # Jinja
 # ----------
@@ -132,9 +140,9 @@ has_permission = {
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+	"Request for Quotation": "dd_erpnext_bidding.bidding.overrides.RequestforQuotationBidding",
+}
 
 # Document Events
 # ---------------
@@ -170,9 +178,14 @@ scheduler_events = {
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "dd_erpnext_bidding.event.get_events"
-# }
+# "Create > Request for Quotation" from a Material Request whose Request
+# Type is flagged "Triggers Vendor Bidding" opens the new RFQ with Enable
+# Vendor Bidding already checked.
+override_whitelisted_methods = {
+	"erpnext.stock.doctype.material_request.material_request.make_request_for_quotation": (
+		"dd_erpnext_bidding.bidding.request_for_quotation.make_request_for_quotation"
+	),
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

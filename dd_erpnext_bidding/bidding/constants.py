@@ -24,8 +24,16 @@ SQ_ITEM_MONEY_FIELDS = (
 	"net_amount",
 	"base_net_rate",
 	"base_net_amount",
-	"lead_time_days",
+	"expected_delivery_date",
 )
+
+# Fields from the lists above that are "" rather than 0 when unset (text,
+# not money) - everything else not listed here or below defaults to 0.
+TEXT_FIELDS = ("in_words", "base_in_words")
+
+# Date/Datetime fields, which the database rejects "" for - these must be
+# NULL rather than 0 or "" when unset.
+DATE_FIELDS = ("expected_delivery_date",)
 
 # Supplier Quotation parent fields that carry computed totals.
 SQ_PARENT_MONEY_FIELDS = (

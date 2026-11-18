@@ -1,5 +1,9 @@
 frappe.ui.form.on("Request for Quotation", {
 	refresh(frm) {
+		if (frm.doc.docstatus === 0 && frm.doc.enable_vendor_bidding) {
+			preview_bidding_round(frm);
+		}
+
 		if (frm.doc.docstatus !== 1 || !frm.doc.enable_vendor_bidding) {
 			return;
 		}
@@ -21,7 +25,36 @@ frappe.ui.form.on("Request for Quotation", {
 			);
 		}
 	},
+
+	enable_vendor_bidding(frm) {
+		if (frm.doc.docstatus === 0 && frm.doc.enable_vendor_bidding) {
+			preview_bidding_round(frm);
+		}
+	},
 });
+
+function preview_bidding_round(frm) {
+	// Which round this RFQ WOULD become if submitted right now - purely a
+	// preview while still a draft, since on_submit always recomputes this
+	// fresh server-side, so it can never go stale even if another round
+	// gets submitted against the same Material Request in the meantime.
+	const material_request =
+		frm.doc.tender_material_request || (frm.doc.items || []).map((d) => d.material_request).find(Boolean);
+
+	if (!material_request) {
+		return;
+	}
+
+	frappe.call({
+		method: "dd_erpnext_bidding.bidding.request_for_quotation.get_next_bidding_round",
+		args: { material_request },
+		callback(r) {
+			if (r.message) {
+				frm.set_value("bidding_round_number", r.message);
+			}
+		},
+	});
+}
 
 function open_bids(frm) {
 	frappe.confirm(

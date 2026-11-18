@@ -6,7 +6,8 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "request_type_name"
+  "request_type_name",
+  "is_bidding_type"
  ],
  "fields": [
   {
@@ -16,6 +17,14 @@
    "label": "Request Type Name",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_bidding_type",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Triggers Vendor Bidding",
+   "description": "When a Material Request uses this Request Type, Request for Quotation documents created from it default to Enable Vendor Bidding = checked, with the Vendor Bidding section expanded."
   }
  ],
  "index_web_pages_for_search": 1,
