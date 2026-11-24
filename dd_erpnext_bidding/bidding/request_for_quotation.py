@@ -68,6 +68,17 @@ def _create_draft_quotations(rfq):
 			create_rfq_items(sq_doc, supplier, d)
 		sq_doc.flags.ignore_permissions = True
 		sq_doc.run_method("set_missing_values")
+
+		# set_missing_values() can pull a default rate in from the Buying
+		# Price List/Item master - that would bias (or just plain leak) a
+		# "suggested" price into what's supposed to be the vendor's own
+		# sealed number, so every row always starts genuinely blank.
+		for d in sq_doc.items:
+			d.rate = 0
+			d.base_rate = 0
+			d.amount = 0
+			d.base_amount = 0
+
 		sq_doc.insert(ignore_permissions=True)
 
 
@@ -182,25 +193,3 @@ def auto_open_bids():
 				_do_open(rfq, opened_by="Administrator", auto=True)
 			except Exception:
 				frappe.log_error(title="Auto bid opening failed", message=frappe.get_traceback())
-
-
-@frappe.whitelist()
-def make_request_for_quotation(source_name, target_doc=None):
-	"""Wraps erpnext's own Material Request -> RFQ mapper (hooks.py
-	`override_whitelisted_methods`) so that creating an RFQ from a Material
-	Request whose Request Type is flagged "Triggers Vendor Bidding" opens
-	with Enable Vendor Bidding already checked - which also auto-expands
-	the Vendor Bidding section, since a collapsible section with a filled
-	field renders expanded by default.
-	"""
-	from erpnext.stock.doctype.material_request.material_request import (
-		make_request_for_quotation as _make_request_for_quotation,
-	)
-
-	doclist = _make_request_for_quotation(source_name, target_doc)
-
-	request_type = frappe.db.get_value("Material Request", source_name, "material_request_type_link")
-	if request_type and frappe.db.get_value("Material Request Type", request_type, "is_bidding_type"):
-		doclist.enable_vendor_bidding = 1
-
-	return doclist

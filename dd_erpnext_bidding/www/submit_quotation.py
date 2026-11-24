@@ -43,3 +43,8 @@ def get_context(context):
 	context.currency_symbol = (
 		frappe.db.get_value("Currency", doc.currency, "symbol") or doc.currency or ""
 	)
+	context.existing_attachments = frappe.get_all(
+		"File",
+		filters={"attached_to_doctype": "Supplier Quotation", "attached_to_name": doc.name},
+		pluck="file_name",
+	)

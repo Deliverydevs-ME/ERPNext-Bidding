@@ -178,15 +178,6 @@ scheduler_events = {
 # Overriding Methods
 # ------------------------------
 #
-# "Create > Request for Quotation" from a Material Request whose Request
-# Type is flagged "Triggers Vendor Bidding" opens the new RFQ with Enable
-# Vendor Bidding already checked.
-override_whitelisted_methods = {
-	"erpnext.stock.doctype.material_request.material_request.make_request_for_quotation": (
-		"dd_erpnext_bidding.bidding.request_for_quotation.make_request_for_quotation"
-	),
-}
-#
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
 # along with any modifications made in other Frappe apps

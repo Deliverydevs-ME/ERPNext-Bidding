@@ -65,7 +65,10 @@ def seal_supplier_quotation(doc):
 		"parent": {f: _coerce(f, doc.get(f)) for f in SQ_PARENT_MONEY_FIELDS},
 	}
 
-	set_encrypted_password(doc.doctype, doc.name, json.dumps(payload), SEALED_PAYLOAD_FIELD)
+	# frappe.as_json (not plain json.dumps) because item/date fields can come
+	# back as real date/datetime objects - e.g. after a reload - which the
+	# stdlib json module can't serialise on its own.
+	set_encrypted_password(doc.doctype, doc.name, frappe.as_json(payload), SEALED_PAYLOAD_FIELD)
 
 	zeroed_items = {f: _empty_value(f) for f in SQ_ITEM_MONEY_FIELDS}
 	for d in doc.items:

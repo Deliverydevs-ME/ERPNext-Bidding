@@ -25,6 +25,7 @@ SQ_ITEM_MONEY_FIELDS = (
 	"base_net_rate",
 	"base_net_amount",
 	"expected_delivery_date",
+	"lead_time_days",
 )
 
 # Fields from the lists above that are "" rather than 0 when unset (text,

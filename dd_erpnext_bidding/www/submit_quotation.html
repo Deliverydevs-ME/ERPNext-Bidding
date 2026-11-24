@@ -17,6 +17,11 @@
 			attachment you enter here until the bidding window closes and every submitted quotation is
 			opened together.
 		</p>
+		{% if is_editable %}
+		<label for="sq-valid-till"><strong>Quotation Valid Till</strong></label><br>
+		<input type="date" id="sq-valid-till" class="form-control" style="max-width: 220px;"
+			value="{{ sq.valid_till or '' }}">
+		{% endif %}
 	</div>
 
 	{% if already_submitted %}
@@ -36,6 +41,7 @@
 				<th>Qty</th>
 				<th>UOM</th>
 				<th style="width: 150px;">Your Rate</th>
+				<th style="width: 120px;">Lead Time (days)</th>
 				<th style="width: 160px;">Expected Delivery Date</th>
 				<th style="width: 150px; text-align: right;">Amount</th>
 			</tr>
@@ -48,7 +54,9 @@
 				<td>{{ item.qty }}</td>
 				<td>{{ item.uom or "" }}</td>
 				<td><input type="number" step="any" min="0" class="form-control sq-rate"
-					data-row="{{ item.name }}" data-qty="{{ item.qty }}" value="{{ item.rate or "" }}"></td>
+					data-row="{{ item.name }}" data-qty="{{ item.qty }}" value="{{ item.rate or 0 }}"></td>
+				<td><input type="number" step="1" min="0" class="form-control sq-lead-time"
+					data-row="{{ item.name }}" value="{{ item.lead_time_days or '' }}"></td>
 				<td><input type="date" class="form-control sq-delivery-date"
 					data-row="{{ item.name }}" value="{{ item.expected_delivery_date or "" }}"
 					min="{{ frappe.utils.today() }}"></td>
@@ -60,7 +68,7 @@
 		</tbody>
 		<tfoot>
 			<tr>
-				<td colspan="6" style="text-align: right;"><strong>Grand Total</strong></td>
+				<td colspan="7" style="text-align: right;"><strong>Grand Total</strong></td>
 				<td id="sq-grand-total" style="text-align: right;">
 					<strong>{{ currency_symbol }} {{ "%.2f"|format(sq.items|sum(attribute="amount") or 0) }}</strong>
 				</td>
@@ -70,6 +78,13 @@
 
 	<div class="vb-card">
 		<label for="sq-file"><strong>Supporting Attachment (PDF/Excel)</strong></label><br>
+		{% if existing_attachments %}
+		<div style="margin-bottom: 8px;">
+			{% for file_name in existing_attachments %}
+			<div class="sq-existing-attachment">{{ file_name }}</div>
+			{% endfor %}
+		</div>
+		{% endif %}
 		<input type="file" id="sq-file" accept=".pdf,.xls,.xlsx">
 		<div id="sq-file-status" class="text-muted" style="margin-top: 6px;"></div>
 	</div>
@@ -87,6 +102,13 @@
 	.vb-card { background: var(--bg-light-gray, #f5f5f5); border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
 	#sq-items-table input { width: 100%; text-align: right; }
 	#sq-actions { margin-top: 16px; display: flex; gap: 10px; }
+	.sq-existing-attachment {
+		color: var(--text-muted, #6b7280);
+		font-size: 13px;
+		padding: 4px 0;
+		user-select: text;
+	}
+	.sq-existing-attachment::before { content: "\2713  "; color: #2e7d32; }
 </style>
 
 <script>
@@ -116,9 +138,16 @@
 	function collectItems() {
 		const rates = {};
 		document.querySelectorAll(".sq-rate").forEach((i) => (rates[i.dataset.row] = i.value));
+		const leadTimes = {};
+		document.querySelectorAll(".sq-lead-time").forEach((i) => (leadTimes[i.dataset.row] = i.value));
 		const items = [];
 		document.querySelectorAll(".sq-delivery-date").forEach((i) => {
-			items.push({ name: i.dataset.row, rate: rates[i.dataset.row] || 0, expected_delivery_date: i.value || "" });
+			items.push({
+				name: i.dataset.row,
+				rate: rates[i.dataset.row] || 0,
+				lead_time_days: leadTimes[i.dataset.row] || 0,
+				expected_delivery_date: i.value || "",
+			});
 		});
 		return items;
 	}
@@ -163,8 +192,16 @@
 			return;
 		}
 		setMessage("Saving...", false);
+		const validTillInput = document.getElementById("sq-valid-till");
 		uploadFile()
-			.then(() => apiCall("save_quotation", { name, items: collectItems(), action }))
+			.then(() =>
+				apiCall("save_quotation", {
+					name,
+					items: collectItems(),
+					action,
+					valid_till: validTillInput ? validTillInput.value : "",
+				})
+			)
 			.then(() => {
 				if (action === "submit") {
 					window.location.reload();

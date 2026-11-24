@@ -3,7 +3,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 from dd_erpnext_bidding.bidding import constants
 from dd_erpnext_bidding.bidding.audit import log_event
@@ -50,25 +50,16 @@ def validate(doc, method=None):
 
 
 def _validate_complete_bid(doc):
-	"""A sealed-bid submission must be complete: every item needs a rate and
-	an expected delivery date, and at least one supporting attachment.
-	Uploading a file alone, with items left blank, does not count as a
-	valid quotation.
+	"""A sealed-bid submission must be complete: every item needs a rate, and
+	at least one supporting attachment. Expected delivery date and lead
+	time are optional. Uploading a file alone, with items left blank, does
+	not count as a valid quotation.
 	"""
 	missing_rate = [d.idx for d in doc.items if not d.rate]
 	if missing_rate:
 		frappe.throw(
 			_("Please enter a quoted rate for every item before submitting. Missing for row(s): {0}").format(
 				", ".join(str(i) for i in missing_rate)
-			),
-			title=_("Incomplete Quotation"),
-		)
-
-	missing_delivery_date = [d.idx for d in doc.items if not d.expected_delivery_date]
-	if missing_delivery_date:
-		frappe.throw(
-			_("Please enter the expected delivery date for every item. Missing for row(s): {0}").format(
-				", ".join(str(i) for i in missing_delivery_date)
 			),
 			title=_("Incomplete Quotation"),
 		)
@@ -105,7 +96,7 @@ def on_submit(doc, method=None):
 
 
 @frappe.whitelist()
-def save_quotation(name, items, action="save"):
+def save_quotation(name, items, action="save", valid_till=None):
 	"""Backs the /submit-quotation/<name> portal page (www/submit_quotation.py).
 
 	The generic Supplier Quotation web view is read-only and has no field
@@ -133,6 +124,9 @@ def save_quotation(name, items, action="save"):
 			continue  # never trust a row name that isn't actually on this document
 		row.rate = flt(incoming.get("rate"))
 		row.expected_delivery_date = incoming.get("expected_delivery_date") or None
+		row.lead_time_days = cint(incoming.get("lead_time_days"))
+
+	doc.valid_till = valid_till or None
 
 	# Authorization was already checked above via frappe.has_website_permission -
 	# the right mechanism for a portal/Website User, who has no desk role and so

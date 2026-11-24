@@ -7,14 +7,26 @@ from frappe.custom.doctype.property_setter.property_setter import make_property_
 
 BIDDING_ENABLED = "eval:doc.enable_vendor_bidding"
 
-# Doctypes/fields from an earlier iteration of this app (in-RFQ multi-round
-# table + passwordless vendor links) that the tender spec replaced with:
-# one RFQ per round, and suppliers logging into the native ERPNext portal.
-# Removed on every migrate so a stale site never keeps the old shape.
+# Doctypes/fields from an earlier iteration of this app that later changes
+# replaced or dropped entirely. Removed on every migrate so a stale site
+# never keeps the old shape.
+#
+# - in-RFQ multi-round table + passwordless vendor links -> one RFQ per
+#   round, suppliers logging into the native ERPNext portal.
+# - Material Request Request Type/Project/Tender Reference + the
+#   Material-Request-driven "auto-check Enable Vendor Bidding" control ->
+#   dropped. Material Request is back to stock; the buyer ticks Enable
+#   Vendor Bidding on the RFQ by hand.
 OBSOLETE_DOCTYPES = ["Vendor Bidding Link", "Bidding Round"]
 OBSOLETE_CUSTOM_FIELDS = {
 	"Request for Quotation": ["current_round", "sb_bidding_rounds", "bidding_rounds"],
+	"Material Request": ["tender_reference", "material_request_type_link", "custom_project"],
+	"Request for Quotation Item": ["material_request_type_link"],
 }
+OBSOLETE_PROPERTY_SETTERS = [
+	("Request for Quotation Item", "project_name", "fetch_from"),
+	("Request for Quotation Item", "project_name", "read_only"),
+]
 
 CUSTOM_FIELDS = {
 	"Request for Quotation": [
@@ -45,12 +57,20 @@ CUSTOM_FIELDS = {
 			"Purchase Manager, can view a submitted amount before then.",
 		},
 		{
+			"fieldname": "project",
+			"fieldtype": "Link",
+			"label": "Project",
+			"options": "Project",
+			"insert_after": "enable_vendor_bidding",
+			"depends_on": BIDDING_ENABLED,
+		},
+		{
 			"fieldname": "bidding_round_number",
 			"fieldtype": "Int",
 			"label": "Bidding Round",
 			"default": "1",
 			"read_only": 1,
-			"insert_after": "enable_vendor_bidding",
+			"insert_after": "project",
 			"depends_on": BIDDING_ENABLED,
 			"no_copy": 1,
 			"description": "Which round this RFQ will become, among all bidding-enabled RFQs raised "
@@ -186,63 +206,11 @@ CUSTOM_FIELDS = {
 			"insert_after": "request_for_quotation",
 		},
 	],
-	"Material Request": [
-		{
-			"fieldname": "tender_reference",
-			"fieldtype": "Data",
-			"label": "Tender / Bidding Reference",
-			"insert_after": "title",
-			"description": "Free-text tender code/name (e.g. 'Tender A') identifying this bidding "
-			"exercise - carried for reference on every RFQ round raised against this Material Request.",
-		},
-		{
-			"fieldname": "material_request_type_link",
-			"fieldtype": "Link",
-			"label": "Request Type",
-			"options": "Material Request Type",
-			"insert_after": "material_request_type",
-		},
-		{
-			"fieldname": "custom_project",
-			"fieldtype": "Link",
-			"label": "Project",
-			"options": "Project",
-			"insert_after": "material_request_type_link",
-		},
-	],
-	"Request for Quotation Item": [
-		{
-			"fieldname": "material_request_type_link",
-			"fieldtype": "Link",
-			"label": "Request Type",
-			"options": "Material Request Type",
-			"fetch_from": "material_request.material_request_type_link",
-			"read_only": 1,
-			"print_hide": 1,
-			"insert_after": "material_request_item",
-		},
-	],
 }
 
-# "Request for Quotation Item" already ships its own "Project" field
-# (project_name) with no fetch_from - rather than add a duplicate field, we
-# point the existing one at Material Request.custom_project.
-PROPERTY_SETTERS = [
-	{
-		"doctype": "Request for Quotation Item",
-		"fieldname": "project_name",
-		"property": "fetch_from",
-		"value": "material_request.custom_project",
-		"property_type": "Small Text",
-	},
-	{
-		"doctype": "Request for Quotation Item",
-		"fieldname": "project_name",
-		"property": "read_only",
-		"value": "1",
-		"property_type": "Check",
-	},
-]
+# No active Property Setters right now - see OBSOLETE_PROPERTY_SETTERS for
+# the ones a previous iteration created and this one reverts.
+PROPERTY_SETTERS = []
 
 
 def after_install():
@@ -256,18 +224,6 @@ def create_fields():
 		make_property_setter(
 			ps["doctype"], ps["fieldname"], ps["property"], ps["value"], ps["property_type"], for_doctype=False
 		)
-	flag_bidding_request_types()
-
-
-def flag_bidding_request_types():
-	"""Best-effort, idempotent: if a "Tender (Bidding)" Material Request Type
-	already exists (as created manually on this site), flag it so RFQs
-	created from a Material Request of that type default to Enable Vendor
-	Bidding = checked. Harmless no-op if it doesn't exist yet or is already
-	flagged.
-	"""
-	if frappe.db.exists("Material Request Type", "Tender (Bidding)"):
-		frappe.db.set_value("Material Request Type", "Tender (Bidding)", "is_bidding_type", 1)
 
 
 def remove_obsolete():
@@ -276,6 +232,11 @@ def remove_obsolete():
 			name = f"{doctype}-{fieldname}"
 			if frappe.db.exists("Custom Field", name):
 				frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
+
+	for doctype, fieldname, property in OBSOLETE_PROPERTY_SETTERS:
+		name = f"{doctype}-{fieldname}-{property}"
+		if frappe.db.exists("Property Setter", name):
+			frappe.delete_doc("Property Setter", name, ignore_permissions=True, force=True)
 
 	for doctype in OBSOLETE_DOCTYPES:
 		if frappe.db.exists("DocType", doctype):
